@@ -1,18 +1,15 @@
 __author__ = 'raul lucero'
 import socket,select
 
-def broadcast_msg(sock, msg, chat):
+def broadcast_msg(sock, msg):
     for socket in connectionList:
-        if socket != server and socket != sock and chat == "publico":
+        if socket != server and socket != sock:
             try:
                 socket.send(msg)
             except:
                 socket.close()
                 connectionList.remove(socket)
-    for socket in connectionList:
-        if socket == sock and chat == "privado":
-            socket.send(msg)       
-                
+                del usersMap[socket]
 
 def get_user(client):
     info = usersMap[client]
@@ -22,10 +19,8 @@ def get_user(client):
 if __name__ == "__main__":
 
     connectionList = []
-    privadeList = []
     msgBuffer = 4096
     usersMap = {}
-    chat = "publico"
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     server.bind(("0.0.0.0", 6969))
@@ -40,11 +35,11 @@ if __name__ == "__main__":
             if sock == server:
                 client, addr = server.accept()
                 connectionList.append(client)
-                
-                usersMap[client]= addr,client.recv(1024)
-                print "Usuario %s@%s conectado" %(addr, get_user(client))
-                chat = "publico"
-                broadcast_msg(client,"(%s) entro a la sala \n" %get_user(client),chat)
+
+                username = client.recv(1024)
+                usersMap[client]= (username, server)
+                print "Usuario %s@%s conectado" %(addr, username)
+                broadcast_msg(client,"(%s) entro a la sala \n" %username)
 
             else:
                 try:
@@ -52,41 +47,61 @@ if __name__ == "__main__":
                     newdata = data[0:len(data)-1];
                     if newdata == "/list":
                         sock.send("Lista de usuarios en linea\n")
-                        for us in usersMap.items():
-                             sock.send(str(us[1][1])+"\n")
-                    if newdata[0:1] == "@":
-                        for us in usersMap.items():
-                            if(us[1][1]==newdata[1:]):
-                                source = sock
-                                end = us[0]
-                                us_source = usersMap[sock][1]
-                                us_end = us[1][1]
-                                chat = "privado"
-                                privadeList.append(source)
-                                privadeList.append(end)
-                                source.send("Chat privado con %s\n" %us_end)
-                                end.send("Chat privado con %s\n" %us_source)
-                                while 1:
-                                    for s in privadeList:
-                                        msg = s.recv(2046)
-                                        if s != source:
-                                            if s == end:
-                                                tempo = source
-                                                source = s
-                                                end = tempo
-                                            else:
-                                                print "Error"
-                                        if msg:
-                                            broadcast_msg(end,"\r"  + get_user(s)+ ' : '+ msg,chat)
-                                
-                            else:
-                                finded = 1
-                        if finded == 1:
-                            sock.send("\nNo se encontro el usuario ")
+                        for seleted_sock, Utuple in usersMap.iteritems():
+                            name, SSock = Utuple
+                            sock.send(name+'\n')
+
+                    elif newdata == "/off":
+                        name, selected_sock = usersMap[sock]
+                        if selected_sock != server:
+                            tname, ttsock = usersMap[selected_sock]
+                            usersMap[selected_sock] = (tname, server)
+                            selected_sock.send('Usuario (%s) se ha desconectado\n' %name)
+                        sock.send('\rTe desconectaste\n')
+                        msg = 'Usuario (%s) se ha desconectado\n' %name
+                        print "Usuario %s se desconecto" %name
+                        del usersMap[sock]
+                        broadcast_msg(sock, msg)
+                        sock.close()
+                        connectionList.remove(sock)
+
+                    elif newdata[0:1] == "@":
+                        sName, TSock = usersMap[sock]
+                        for seleted_sock, Utuple in usersMap.iteritems():
+                            name, SSock = Utuple
+                            if name ==newdata[1:] and SSock == server and seleted_sock != sock:
+                                sock.send('\rEstas chateando con %s\n' % name)
+                                usersMap[sock] = (sName, seleted_sock)
+                                seleted_sock.send('\rEstas chateando con %s\n' % sName)
+                                usersMap[seleted_sock] = (name, sock)
+
+                    elif newdata[0:5] == "/exit":
+                        name, selected_sock = usersMap[sock]
+                        if selected_sock != usersMap[sock]:
+                            selected_name, select_sock_selected = usersMap[selected_sock]
+                            usersMap[selected_sock] = (selected_name, server)
+                            usersMap[sock] = (name, server)
+                            sock.send('\rTe desconectaste del chat privado\n')
+                            selected_sock.send('\r%s dejo el chat privado\n' % name)
+
+                    elif newdata == "/help":
+                        sock.send("Usa los distinos comandos\n")
+                        sock.send("El comando /list te ayudara a ver quien esta conectado \n")
+                        sock.send("El comando @Usuario te ayudara a tener un chat privado con el usuario que elijas\n")
+                        sock.send("El comando /exit si ya estas en un chat privado este comando te ayudara a salir del chat y volver a la sala\n")
+                        sock.send("El comando /off te ayudara a salir del servidor \n")
+
+                    else:
+                        #Send a msn
+                        uName, tSock = usersMap[sock]
+                        newmessage = '%s: %s' % (uName, data)
+                        if tSock != server:
+                            tSock.send(newmessage)
 
                 except:
-                    broadcast_msg(sock, "Usuario (%s) se ha desconectado\n" %get_user(sock))
-                    print "Usuario %s@%s se desconecto" %(addr, get_user(sock))
+                    uName, tSock = usersMap[sock]
+                    broadcast_msg(sock, "Usuario (%s) se ha desconectado\n" %uName)
+                    print "Usuario @%s se desconecto" %uName
                     del usersMap[sock]
                     sock.close()
                     connectionList.remove(sock)
