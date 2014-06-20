@@ -36,6 +36,6 @@ while 1:
                 sys.stdout.write(data)
                 cursor()
         else:
-                msg = sys.stdin.readline()
-                cliente.send(msg)
-                cursor()
+            msg = sys.stdin.readline()
+            cliente.send(msg)
+            cursor()
